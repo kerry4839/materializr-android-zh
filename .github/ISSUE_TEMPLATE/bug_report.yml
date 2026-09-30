@@ -1,0 +1,61 @@
+name: Bug report
+description: Something broke, crashed, or behaved wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! A clear repro is the single most useful thing -
+        if you can attach a small `.materializr` project (or a STEP file) that
+        triggers it, that helps a lot.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What went wrong, and what did you expect instead?
+      placeholder: "Clicking the front face of a cylinder selects a back edge instead of the face."
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a fresh project, if you can.
+      placeholder: |
+        1. New project
+        2. Create a cylinder primitive
+        3. Click near the front-bottom rim
+        4. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux (AppImage)
+        - Linux (built from source)
+        - Windows
+        - macOS
+        - Android (tablet)
+        - Android (phone)
+        - iOS
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From Help → About Materializr (or the release/tag you downloaded).
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Files, screenshots, logs
+      description: |
+        Drag in a project file, a screenshot/recording, or terminal output.
+        On Linux, running the AppImage from a terminal surfaces any crash log.
+    validations:
+      required: false

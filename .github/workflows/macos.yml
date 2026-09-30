@@ -1,0 +1,199 @@
+name: macOS Build
+
+# Builds a native macOS (Apple Silicon / arm64) build with OpenCASCADE + SDL2
+# from Homebrew, packages a self-contained Materializr.app into a .dmg via
+# packaging/macos/build-dmg.sh, and uploads it as a workflow artifact. On a
+# published GitHub Release it also attaches the .dmg. The Linux/Windows/Android
+# builds are unaffected.
+
+# pull_request matters most here: this is the ONLY job that runs ctest, so
+# before it ran on PRs a contribution was first tested after it had already
+# been merged to main.
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'android/**'
+      - 'scripts/**'
+      - '.github/workflows/linux.yml'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'android/**'
+      - 'scripts/**'
+      - '.github/workflows/linux.yml'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+  release:
+    types: [ published ]
+
+# A newer push on main (or a new commit on a PR) cancels an in-flight build -
+# older runs wouldn't ship, and a superseded PR result is noise.
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS (arm64)
+    # Apple Silicon runner. TRACK THE LATEST image: the bundled Homebrew SDL2
+    # bottle is compiled for the RUNNER's macOS - a macos-14 bottle's dylib
+    # initializer aborts before main() on much newer systems (issue #12,
+    # macOS 26.5.2: SIGABRT in libSDL2 dllinit during dyld init). Building on
+    # the newest image keeps the bundled dylibs matched to modern SDKs.
+    runs-on: macos-latest
+
+    # contents: write lets softprops/action-gh-release attach the .dmg to a
+    # published Release (matches linux.yml / windows.yml).
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # cmake is preinstalled on the runner; bring the rest from Homebrew. GLM
+      # and Dear ImGui are fetched by CMake, so they're not listed here.
+      - name: Install dependencies
+        run: brew install opencascade dylibbundler
+
+      # SDL2 from SOURCE, not the Homebrew bottle. Bottles are compiled for
+      # the runner's OS with no deployment-target control, which caused BOTH
+      # sides of issue #12: the old macos-14 bottle's dylib initializer aborts
+      # on macOS 26.5.2, and the macos-26 bottle carries minos 26.0 so the
+      # bundle refuses to load on macOS 14-15 at all. Building here against
+      # the CURRENT SDK with MACOSX_DEPLOYMENT_TARGET pinned to 14.0 gives
+      # both: modern-SDK initialisation and the old support floor. Version
+      # matches the Android build's pin (2.30.9).
+      - name: Cache SDL2 (source-built, deployment target 14.0)
+        id: sdl2cache
+        uses: actions/cache@v4
+        with:
+          path: ~/sdl2-prefix
+          key: sdl2-2.30.9-macostarget14-${{ runner.os }}-${{ runner.arch }}-v1
+
+      - name: Build SDL2 from source (MACOSX_DEPLOYMENT_TARGET=14.0)
+        if: steps.sdl2cache.outputs.cache-hit != 'true'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
+        run: |
+          curl -L --fail --retry 3 -o /tmp/sdl2.tar.gz \
+            https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.tar.gz
+          echo "24b574f71c87a763f50704bbb630cbe38298d544a1f890f099a4696b1d6beba4  /tmp/sdl2.tar.gz" | shasum -a 256 -c -
+          tar -xzf /tmp/sdl2.tar.gz -C /tmp
+          cmake -S /tmp/SDL2-2.30.9 -B /tmp/sdl2-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_INSTALL_PREFIX="$HOME/sdl2-prefix"
+          cmake --build /tmp/sdl2-build -j"$(sysctl -n hw.ncpu)"
+          cmake --install /tmp/sdl2-build
+
+      # Kernel-version guard. Every platform is pinned to OCCT 7.9.x (Android/
+      # Linux/Windows do it explicitly; macOS rides Homebrew's stable, which is
+      # 7.9.3 today). OCCT 8.0 hangs long-rod thread generation, so if Homebrew
+      # ever bumps opencascade to 8.x, FAIL LOUDLY here rather than silently
+      # shipping the broken kernel - the fix at that point is to source-build
+      # 7.9.3 on macOS like the other platforms do.
+      - name: Guard OpenCASCADE version (must stay 7.9.x)
+        run: |
+          OCCT_VER="$(brew list --versions opencascade | awk '{print $2}')"
+          echo "Homebrew opencascade: $OCCT_VER"
+          case "$OCCT_VER" in
+            7.9.*) echo "OK - on the pinned 7.9.x line" ;;
+            *) echo "::error::opencascade drifted to $OCCT_VER (expected 7.9.x). OCCT 8.0 hangs threads - source-build 7.9.3 instead of trusting brew latest."; exit 1 ;;
+          esac
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$HOME/sdl2-prefix;$(brew --prefix)"
+
+      - name: Build
+        run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package .app + .dmg
+        run: SDL2_PREFIX="$HOME/sdl2-prefix" ./packaging/macos/build-dmg.sh
+
+      # Deployment-target audit: we have NO Apple hardware, so CI is the only
+      # place to SEE what the bundle actually requires. Print minos/sdk for the
+      # main binary and every bundled dylib, and fail if the SDL2 we ship
+      # regressed past the 14.0 floor (the exact regression a contributor
+      # caught in the first #12 fix artifact). The other dylibs (OCCT bottles)
+      # are reported informationally - if they carry a high minos the bundle's
+      # real floor is theirs, and the next step is source-building them too.
+      - name: Audit bundled deployment targets
+        run: |
+          APP=$(ls -d build/Materializr.app 2>/dev/null || ls -d build/*/Materializr.app)
+          echo "binary/dylib | minos | sdk"
+          fail=0
+          for f in "$APP/Contents/MacOS/materializr" "$APP"/Contents/Frameworks/*.dylib; do
+            line=$(otool -l "$f" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{m=$2} f&&/sdk/{print m, $2; exit}')
+            printf '%s | %s\n' "$(basename "$f")" "${line:-<none>}"
+            case "$(basename "$f")" in
+              libSDL2*)
+                minos=$(echo "$line" | awk '{print $1}')
+                case "$minos" in
+                  14.*|13.*|12.*|11.*|10.*) : ;;
+                  *) echo "::error::bundled SDL2 minos=$minos - must stay at the 14.0 floor (issue #12 regression guard)"; fail=1 ;;
+                esac ;;
+            esac
+          done
+          exit $fail
+
+      # Mount the .dmg and actually launch the bundled app - the only thing that
+      # proves the dylib bundling + rpath rewrites are correct (a green build that
+      # only `ls`-es the file can still ship a bundle that doesn't load). A dyld
+      # failure aborts before main; reaching GL init proves every dylib resolved.
+      # Run from / so it can't find resources via the repo working directory.
+      - name: Smoke-test the packaged bundle
+        run: |
+          set -uo pipefail
+          DMG=$(ls build/Materializr-*-arm64.dmg)
+          echo "Testing $DMG"; ls -lh "$DMG"
+          hdiutil attach "$DMG" -mountpoint /Volumes/MZ -nobrowse -quiet
+          ( cd / && /Volumes/MZ/Materializr.app/Contents/MacOS/materializr ) > /tmp/launch.log 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 25); do
+            grep -qiE "^GL |Loaded font|dyld|Library not loaded|Failed to (create|init)" /tmp/launch.log && break
+            sleep 1
+          done
+          # Did it survive the wait, or exit early? A live process = it loaded
+          # and ran; an early exit with no marker = a real silent crash.
+          if kill -0 "$APP_PID" 2>/dev/null; then STILL_ALIVE=1; else STILL_ALIVE=0; fi
+          kill "$APP_PID" 2>/dev/null || true
+          hdiutil detach /Volumes/MZ -quiet || true
+          echo "---- launch log ----"; cat /tmp/launch.log || true
+          if grep -qiE "dyld|Library not loaded|duplicate LC_RPATH|image not found|symbol not found" /tmp/launch.log; then
+            echo "FAIL: dynamic loader error - the bundle is not self-contained"; exit 1
+          elif grep -qiE "^GL |Loaded font" /tmp/launch.log; then
+            echo "PASS: bundle launched and reached GL init"
+          elif grep -qiE "SDL|window|display" /tmp/launch.log; then
+            echo "PASS: all dylibs resolved (runner had no display; stopped at window creation)"
+          elif [ "$STILL_ALIVE" = "1" ]; then
+            # No positive marker, but the process was alive at timeout and hit
+            # no loader error. On a HEADLESS runner a GUI app can create its
+            # window through the window server and enter the render loop without
+            # emitting our stderr markers, so silence-while-running is not a
+            # failure - the self-containment check (dyld) already passed above.
+            echo "PASS: bundle ran to timeout with no loader error (headless: no window/GL output)"
+          else
+            echo "FAIL: app exited early with no output - possible silent crash"; exit 1
+          fi
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Materializr-macos-arm64
+          retention-days: ${{ github.event_name == 'pull_request' && 2 || 90 }}
+          path: build/Materializr-*-arm64.dmg
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Materializr-*-arm64.dmg

@@ -1,0 +1,19 @@
+# Gradle / AGP build output
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+*.iml
+
+# Cross-built OpenCASCADE .so set - regenerate with scripts/setup-deps.sh
+# (or copy-occt-libs.sh). 68 MB of arch-specific binaries; not source.
+app/src/main/jniLibs/
+
+# SDL2 source is symlinked/placed locally by setup-deps.sh, not committed.
+app/jni/SDL
+
+# Release-signing secrets - NEVER commit. See RELEASE-SIGNING.md.
+keystore.properties
+*.jks
+*.keystore

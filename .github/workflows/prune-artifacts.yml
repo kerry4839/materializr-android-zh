@@ -1,0 +1,49 @@
+name: Prune old artifacts
+
+# Actions storage is metered account-wide (0.5 GB-month included on the free
+# plan), so we keep exactly ONE artifact per name: the latest main build.
+# After each build workflow finishes on main, delete the older artifacts that
+# share a name with what it just uploaded. PR artifacts are left alone - their
+# 2-day retention (set at upload) cleans those up on its own.
+#
+# This keeps steady-state storage bounded (~140 MB across the five artifact
+# names) even if the project sits idle, instead of the latest build expiring.
+
+on:
+  workflow_run:
+    workflows: ["Linux Build", "Windows Build", "macOS Build"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  prune:
+    # Only prune in the wake of a main/release run. A PR run must never
+    # trigger deletion - its artifacts share names with main's.
+    if: github.event.workflow_run.event != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run_id = context.payload.workflow_run.id;
+            const { data: current } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner, repo, run_id, per_page: 100,
+            });
+            for (const art of current.artifacts) {
+              const all = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+                owner, repo, name: art.name, per_page: 100,
+              });
+              for (const old of all) {
+                if (old.id === art.id) continue;
+                // Leave PR-run artifacts to their own retention window.
+                if (old.workflow_run?.head_branch !== 'main') continue;
+                // Never delete something newer than us: if two pushes race,
+                // each prune only sweeps what it supersedes.
+                if (new Date(old.created_at) >= new Date(art.created_at)) continue;
+                await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: old.id });
+                core.info(`deleted ${old.name} #${old.id} (run ${old.workflow_run.id})`);
+              }
+            }

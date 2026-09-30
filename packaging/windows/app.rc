@@ -1,0 +1,4 @@
+// Windows resource: embeds the application icon into the executable so
+// Explorer, the taskbar, and the installer all show the Materializr logo
+// instead of the generic exe icon.
+IDI_ICON1 ICON "materializr.ico"

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metainfo: lets AppImage managers (Gear Lever, AppImagePool) and
+     software centres auto-populate Materializr's description, screenshot,
+     links and release notes from the embedded usr/share/metainfo/ file. -->
+<component type="desktop-application">
+  <id>com.materializr.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Materializr</name>
+  <summary>3D CAD for makers, between Tinkercad and FreeCAD</summary>
+
+  <description>
+    <p>
+      Materializr is open-source 3D CAD for makers - the middle ground between
+      dead-simple tools like Tinkercad and full professional suites like
+      FreeCAD. Enough genuine solid modeling to make real parts, without a steep
+      learning curve, a subscription, or an account.
+    </p>
+    <p>
+      Sketch on a plane, pull it into a solid (extrude, revolve, loft, sweep),
+      fillet and chamfer, run boolean operations, cut threads, and edit any step
+      of the history later - even after closing and reopening the project.
+    </p>
+    <p>
+      Sketches export to SVG at 1:1 millimeters for laser cutters and 2.5D CNC.
+      It also imports STEP and IGES, and exports STEP, STL, IGES and glTF. The
+      geometry kernel is OpenCASCADE - real B-rep solids, not meshes.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Sketch-based parametric modeling with an editable feature history</li>
+      <li>Extrude, revolve, loft, sweep, fillet, chamfer, shell, threads</li>
+      <li>Boolean union, subtract and intersect</li>
+      <li>STEP / IGES import; STEP / STL / IGES / glTF and 1:1 SVG export</li>
+      <li>Touch-capable UI for tablets and larger screens</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">materializr.desktop</launchable>
+
+  <developer id="com.materializr">
+    <name>Steve Bushwa</name>
+  </developer>
+
+  <url type="homepage">https://github.com/materializr-cad/materializr</url>
+  <url type="bugtracker">https://github.com/materializr-cad/materializr/issues</url>
+  <url type="vcs-browser">https://github.com/materializr-cad/materializr</url>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Engineering</category>
+  </categories>
+
+  <keywords>
+    <keyword>CAD</keyword>
+    <keyword>3D</keyword>
+    <keyword>parametric</keyword>
+    <keyword>modeling</keyword>
+    <keyword>STEP</keyword>
+    <keyword>STL</keyword>
+    <keyword>maker</keyword>
+  </keywords>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/materializr-cad/materializr/main/docs/hero-mug.png</image>
+      <caption>A part modeled in Materializr</caption>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.2.1" date="2026-06-21">
+      <description>
+        <p>Parametric-edit reliability fixes:</p>
+        <ul>
+          <li>Editing a fillet or chamfer now selects the right feature and stays editable after you cancel an edit.</li>
+          <li>Editing an early feature no longer deletes geometry on reloaded projects.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.2.0" date="2026-06-20">
+      <description>
+        <p>Move Hole, a light viewport theme, Repair Geometry, and a round of parametric-reliability and viewport fixes.</p>
+      </description>
+    </release>
+  </releases>
+</component>

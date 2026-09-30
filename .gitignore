@@ -1,0 +1,62 @@
+# Build
+build/
+build-verify/
+build-tests/
+cmake-build-*/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime-generated UI layout (written on first launch from the built-in default)
+imgui.ini*
+
+# Dependencies (fetched by CMake)
+third_party/imgui/
+third_party/glfw/
+third_party/glm/
+
+# Python venv
+venv/
+__pycache__/
+.claude/
+dist/
+
+# User project files (test artifacts, user data)
+*.materializr
+build-desktop/
+build-ios*/
+
+# Abandoned Play Store packaging (aab + store graphics) - kept locally, not published
+packaging/playstore/
+
+# Android release signing - NEVER commit the keystore or any password file.
+# The real keystore lives outside the repo (~/keys/materializr/); these patterns
+# are a safety net so a stray copy or a keystore.properties can't be committed.
+*.jks
+*.keystore
+keystore.properties
+android/keystore.properties
+# Build artifacts - never commit binaries; releases carry them as assets
+*.apk
+*.aab
+*.appimage
+dist-apk-*
+/dist/
+.worktrees/
+
+# Android NDK / Gradle local state
+android/.cxx/
+android/app/.cxx/
+android/.gradle/
+android/local.properties
+*.iml

@@ -1,0 +1,7 @@
+build/
+dist/
+venv/
+.git/
+.claude/
+*.AppImage
+__pycache__/

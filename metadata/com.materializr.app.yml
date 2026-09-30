@@ -1,0 +1,150 @@
+Categories:
+  - Graphics
+License: GPL-3.0-or-later
+AuthorName: Steve Bushwa
+SourceCode: https://github.com/materializr-cad/materializr
+IssueTracker: https://github.com/materializr-cad/materializr/issues
+Changelog: https://github.com/materializr-cad/materializr/blob/HEAD/docs/changelog.md
+
+AutoName: Materializr
+
+RepoType: git
+Repo: https://github.com/materializr-cad/materializr.git
+
+Builds:
+  - versionName: 1.0.1
+    versionCode: 6
+    commit: 761ba3b2b0bd580fb7141e066ab0c2c3316655dc
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.1.0
+    versionCode: 7
+    commit: 8389f435327e955930d8a46444861d9609cfe045
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.0
+    versionCode: 8
+    commit: e4f36c2c7565342b46f065b770dba2dea5c75a58
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.1
+    versionCode: 9
+    commit: 595fd33a61040e478141cbcfaefbfe7310c506e2
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.2
+    versionCode: 10
+    commit: 9a56c32243db56201f53d24726ba25d0f3c958ab
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.3
+    versionCode: 11
+    commit: v1.2.3
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.4
+    versionCode: 12
+    commit: v1.2.4
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.5
+    versionCode: 13
+    commit: v1.2.5
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.6
+    versionCode: 14
+    commit: v1.2.6
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.7
+    versionCode: 15
+    commit: v1.2.7
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+  - versionName: 1.2.8
+    versionCode: 16
+    commit: v1.2.8
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y make gcc libc-dev cmake
+    gradle:
+      - yes
+    build: JOBS=4 ANDROID_NDK="$$NDK$$" ../scripts/setup-deps.sh
+    ndk: r26d
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.2.8
+CurrentVersionCode: 16

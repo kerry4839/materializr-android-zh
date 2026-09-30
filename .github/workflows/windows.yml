@@ -1,0 +1,194 @@
+name: Windows Build
+
+# Builds a native Windows x64 executable (MSVC) with OpenCASCADE from vcpkg,
+# and publishes a portable .zip and an NSIS installer as artifacts. On a GitHub
+# Release it also attaches both. The Linux/AppImage build is unaffected.
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'scripts/**'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'scripts/**'
+  workflow_dispatch:
+  release:
+    types: [ published ]
+
+# A new commit on a PR (or on main) cancels the in-flight run for that ref.
+# This job is the long one, so superseded runs are worth cancelling.
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    # `packages: write` lets us push compiled vcpkg binaries (OpenCASCADE etc.)
+    # to the repo's GitHub Packages NuGet feed so the next build can pull them
+    # back. `contents: write` is for softprops/action-gh-release to attach
+    # build artifacts when a Release is published.
+    permissions:
+      contents: write
+      packages: write
+
+    env:
+      # vcpkg binary cache via NuGet on GitHub Packages. The first build writes
+      # OCCT (and friends) into the feed; subsequent builds download the
+      # binaries instead of recompiling, dropping OCCT's ~1h cold compile to
+      # a few minutes. Replaces the now-removed `x-gha` backend.
+      #
+      # READ-ONLY on pull requests. A PR from a fork gets a read-only
+      # GITHUB_TOKEN, so a `readwrite` push would fail the step; and PR builds
+      # shouldn't be able to write the cache that later main builds consume
+      # anyway - that would let an untrusted PR poison a trusted build.
+      VCPKG_BINARY_SOURCES: >-
+        clear;nuget,GitHub,${{ github.event_name == 'pull_request' && 'read' || 'readwrite' }}
+      # Where the NuGet feed lives. Per-org URL; ${{ github.repository_owner }}
+      # resolves to materializr-cad for this repo, but stays correct on forks.
+      NUGET_FEED_URL: "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Wire vcpkg up to authenticate against the GitHub Packages NuGet feed.
+      # GITHUB_TOKEN is the workflow's own short-lived token; with the
+      # `packages: write` permission above it can both pull cached binaries
+      # and push new ones.
+      #
+      # Skipped for PRs from a FORK: that token cannot authenticate to this
+      # org's feed at all, so configuring the source would only produce 401s on
+      # every restore. Those runs compile the dependencies from source instead -
+      # slow (OCCT is ~1h cold) but correct. Same-repo PRs keep the cache and
+      # stay fast.
+      - name: Configure vcpkg binary cache (GitHub Packages NuGet feed)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        shell: pwsh
+        run: |
+          $nuget = & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" fetch nuget | Select-Object -Last 1
+          & $nuget sources add `
+            -Source "$env:NUGET_FEED_URL" `
+            -StorePasswordInClearText `
+            -Name "GitHub" `
+            -UserName "${{ github.repository_owner }}" `
+            -Password "${{ secrets.GITHUB_TOKEN }}"
+          & $nuget setapikey "${{ secrets.GITHUB_TOKEN }}" -Source "$env:NUGET_FEED_URL"
+
+      - name: Install dependencies (OpenCASCADE 7.9.3 pinned + GLEW + SDL2) via vcpkg
+        shell: pwsh
+        run: |
+          # Manifest mode (vcpkg.json at the repo root) pins opencascade to
+          # 7.9.3. Refresh the manifest baseline to THIS runner's vcpkg checkout
+          # so the override resolves regardless of how the pre-installed vcpkg
+          # tracks upstream, then install into ./vcpkg_installed.
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" x-update-baseline
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
+
+      # BUILD_TESTS=ON: this build used to skip the test suite entirely, so
+      # every Windows-specific code path (the _WIN32 branches in
+      # ProjectRecovery, url_open.h, portable-file-dialogs) shipped without a
+      # single test having run against it on Windows.
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build -S . `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_MANIFEST_MODE=ON `
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      # -C Release: the Visual Studio generator is multi-config, so ctest needs
+      # the configuration named explicitly or it finds no tests to run and
+      # exits 0 - a green check that verified nothing.
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage portable package
+        shell: pwsh
+        run: |
+          $stage = "staging/Materializr"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          # The executable (location varies by generator).
+          $exe = Get-ChildItem -Recurse -Path build -Filter materializr.exe | Select-Object -First 1
+          Copy-Item $exe.FullName $stage/
+          # Runtime DLLs: vcpkg copies most next to the exe; also pull the full
+          # set from the vcpkg install tree to be safe (a few extras don't hurt).
+          Copy-Item "$($exe.Directory.FullName)/*.dll" $stage/ -ErrorAction SilentlyContinue
+          # Manifest mode installs into ./vcpkg_installed (not the global tree).
+          Copy-Item "vcpkg_installed/x64-windows/bin/*.dll" $stage/ -ErrorAction SilentlyContinue
+          # Bundled fonts (UI font + the sketch Text tool's picker) - the app
+          # resolves `<exe>/assets/fonts/` in its candidate list.
+          Copy-Item -Recurse assets $stage/assets
+          Get-ChildItem $stage | Format-Table Name,Length
+
+      # Launch smoke test. CI has always BUILT this exe and never RUN it, which
+      # is how a crash on the FIRST LINE of main() shipped in two releases
+      # (#82 - setvbuf with a size MSVC's UCRT rejects, fail-fasting before any
+      # output). --help returns before a window or GL context exists, so it runs
+      # fine on a headless runner while still covering static init, the CRT
+      # calls, and every DLL the exe imports.
+      - name: Smoke test the packaged exe
+        shell: pwsh
+        working-directory: staging/Materializr
+        run: |
+          $p = Start-Process -FilePath .\materializr.exe -ArgumentList '--help' `
+                 -NoNewWindow -PassThru -Wait
+          if ($p.ExitCode -ne 0) {
+            throw ("materializr.exe --help exited {0} (0x{1:X8}) - the app cannot start" -f $p.ExitCode, $p.ExitCode)
+          }
+          Write-Host "materializr.exe --help exited 0"
+
+      - name: Create portable zip
+        shell: pwsh
+        run: Compress-Archive -Path staging/Materializr/* -DestinationPath Materializr-windows-x64.zip -Force
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Materializr-windows-x64-portable
+          retention-days: ${{ github.event_name == 'pull_request' && 2 || 90 }}
+          path: Materializr-windows-x64.zip
+
+      # APPVERSION goes through the environment, not through `${{ }}` inline in
+      # the command line. Actions expands `${{ }}` textually BEFORE pwsh parses
+      # the line, and git ref names may legally contain `"`, `;`, `$` and
+      # backticks - enough to close the quoted string and append a statement, in
+      # a job that holds contents/packages write. Reading $env: instead removes
+      # that path entirely. (It also keeps the ref out of the command line now
+      # that PRs run this, where ref_name is "<number>/merge".)
+      - name: Build installer (NSIS)
+        shell: pwsh
+        env:
+          APPVERSION: ${{ github.ref_name }}
+        run: |
+          choco install nsis -y --no-progress
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            "/DSTAGING=$PWD\staging\Materializr" `
+            "/DOUTFILE=$PWD\Materializr-Setup.exe" `
+            "/DAPPVERSION=$env:APPVERSION" `
+            packaging\windows\installer.nsi
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Materializr-windows-x64-installer
+          retention-days: ${{ github.event_name == 'pull_request' && 2 || 90 }}
+          path: Materializr-Setup.exe
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Materializr-windows-x64.zip
+            Materializr-Setup.exe
